@@ -6,6 +6,7 @@ import { fixListCommand, fixRollbackCommand } from './commands/fix.js'
 import { kbListCommand, kbSearchCommand, kbShowCommand } from './commands/kb.js'
 import { changelogCommand, changelogAddCommand } from './commands/changelog.js'
 import { watchCommand } from './commands/watch.js'
+import { hooksInstallCommand, hooksUninstallCommand } from './commands/hooks.js'
 
 const program = new Command()
 
@@ -130,6 +131,27 @@ changelogCmd
     await changelogAddCommand(opts.dir, type, desc)
   })
 
+// ─── hooks ───
+const hooksCmd = program
+  .command('hooks')
+  .description('Git hooks 管理')
+
+hooksCmd
+  .command('install')
+  .description('安装 Git hooks')
+  .option('-d, --dir <path>', '项目目录', process.cwd())
+  .action(async (opts) => {
+    await hooksInstallCommand(opts.dir)
+  })
+
+hooksCmd
+  .command('uninstall')
+  .description('卸载 Git hooks')
+  .option('-d, --dir <path>', '项目目录', process.cwd())
+  .action(async (opts) => {
+    await hooksUninstallCommand(opts.dir)
+  })
+
 // ─── watch ───
 program
   .command('watch')
@@ -138,12 +160,14 @@ program
   .option('-i, --interval <seconds>', '检查间隔（秒）', '300')
   .option('--once', '只运行一次', false)
   .option('--skip-cloud', '跳过 L3 云端采集', false)
+  .option('--file-watch', '文件变更时自动诊断', false)
   .action(async (opts) => {
     await watchCommand({
       projectDir: opts.dir,
       interval: parseInt(opts.interval, 10),
       once: opts.once,
       skipCloud: opts.skipCloud,
+      fileWatch: opts.fileWatch,
     })
   })
 
