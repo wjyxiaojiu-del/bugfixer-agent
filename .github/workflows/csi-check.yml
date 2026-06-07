@@ -1,0 +1,123 @@
+name: CSI 诊断巡检
+
+on:
+  # 部署完成后触发
+  deployment_status:
+  # 手动触发
+  workflow_dispatch:
+    inputs:
+      skip-cloud:
+        description: '跳过云端采集'
+        default: 'true'
+      fail-on-severity:
+        description: '诊断失败级别 (critical|warning|info)'
+        default: 'critical'
+
+jobs:
+  csi-check:
+    runs-on: ubuntu-latest
+    # 只在部署成功时运行（或手动触发）
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'deployment_status' && github.event.deployment_status.state == 'success')
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 安装 Playwright 浏览器
+        run: npx playwright install chromium --with-deps
+
+      - name: 运行 CSI 诊断
+        id: csi
+        uses: ./
+        with:
+          project-dir: '.'
+          skip-cloud: ${{ github.event.inputs.skip-cloud || 'true' }}
+          fail-on-severity: ${{ github.event.inputs.fail-on-severity || 'critical' }}
+          ready-timeout: '60000'
+        env:
+          # LLM 配置（可选）
+          CSI_LLM_PROVIDER: ${{ secrets.CSI_LLM_PROVIDER }}
+          CSI_LLM_API_KEY: ${{ secrets.CSI_LLM_API_KEY }}
+          # 数据库 Token（可选）
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          PLANETSCALE_SERVICE_TOKEN_ID: ${{ secrets.PLANETSCALE_SERVICE_TOKEN_ID }}
+          PLANETSCALE_SERVICE_TOKEN: ${{ secrets.PLANETSCALE_SERVICE_TOKEN }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          MONGODB_ATLAS_PUBLIC_KEY: ${{ secrets.MONGODB_ATLAS_PUBLIC_KEY }}
+          MONGODB_ATLAS_PRIVATE_KEY: ${{ secrets.MONGODB_ATLAS_PRIVATE_KEY }}
+
+      - name: 上传诊断报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: csi-report
+          path: .csi/
+          retention-days: 30
+
+      - name: 评论 PR（如果有诊断结果）
+        if: failure() && github.event.pull_request
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs')
+            const path = require('path')
+
+            // 查找最新报告
+            const reportDir = path.join(process.cwd(), '.csi', 'reports')
+            if (!fs.existsSync(reportDir)) return
+
+            const files = fs.readdirSync(reportDir)
+              .filter(f => f.startsWith('report-') && f.endsWith('.json'))
+              .sort()
+              .reverse()
+
+            if (files.length === 0) return
+
+            const report = JSON.parse(fs.readFileSync(path.join(reportDir, files[0]), 'utf8'))
+            if (!report.diagnosis) return
+
+            const severityEmoji = {
+              critical: '🔴',
+              warning: '🟡',
+              info: '🔵'
+            }
+
+            const emoji = severityEmoji[report.diagnosis.severity] || '⚪'
+
+            const body = `## ${emoji} CSI 诊断报告
+
+            **问题**: ${report.diagnosis.description}
+
+            **严重程度**: ${report.diagnosis.severity}
+            **置信度**: ${report.diagnosis.confidence}
+            **根因类型**: ${report.diagnosis.rootCause}
+
+            ### 修复建议
+
+            **${report.diagnosis.fix.title}**
+
+            ${report.diagnosis.fix.description}
+
+            ${report.diagnosis.fix.content ? `\`\`\`sql\n${report.diagnosis.fix.content}\n\`\`\`` : ''}
+
+            ---
+            <sub>由 CSI Agent 自动生成</sub>`
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: body
+            })

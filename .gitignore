@@ -1,0 +1,13 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+.env.local
+
+# CSI runtime files
+.csi/browser-profile/
+.csi/screenshots/
+.csi/captures/
+.csi/reports/
+.csi/snapshots/
+.csi/knowledge/

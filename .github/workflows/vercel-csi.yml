@@ -1,0 +1,47 @@
+name: Vercel 部署巡检
+
+on:
+  # Vercel 部署完成后触发
+  deployment_status:
+
+jobs:
+  csi-check:
+    runs-on: ubuntu-latest
+    # 只在部署成功时运行
+    if: github.event.deployment_status.state == 'success'
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 安装 Playwright 浏览器
+        run: npx playwright install chromium --with-deps
+
+      - name: 运行 CSI 诊断
+        uses: ./
+        with:
+          project-dir: '.'
+          skip-cloud: 'true'
+          fail-on-severity: 'warning'
+          ready-timeout: '60000'
+        env:
+          # LLM 配置（可选）
+          CSI_LLM_PROVIDER: ${{ secrets.CSI_LLM_PROVIDER }}
+          CSI_LLM_API_KEY: ${{ secrets.CSI_LLM_API_KEY }}
+
+      - name: 上传诊断报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: csi-report-${{ github.run_id }}
+          path: .csi/
+          retention-days: 7

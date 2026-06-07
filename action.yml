@@ -1,0 +1,44 @@
+name: 'CSI Agent'
+description: '现场勘察式生产调试 — 自动诊断部署问题'
+author: 'CSI Agent'
+
+inputs:
+  project-dir:
+    description: '项目目录'
+    required: false
+    default: '.'
+  dev-command:
+    description: '自定义 dev server 命令'
+    required: false
+  ready-timeout:
+    description: '等待 dev server 就绪的超时时间（ms）'
+    required: false
+    default: '30000'
+  skip-cloud:
+    description: '跳过 L3 云端采集'
+    required: false
+    default: 'true'
+  fail-on-severity:
+    description: '诊断结果达到此级别时失败 (critical|warning|info)'
+    required: false
+    default: 'critical'
+  auto-fix:
+    description: '自动应用修复方案'
+    required: false
+    default: 'false'
+
+outputs:
+  diagnosis:
+    description: '诊断结果（JSON）'
+  severity:
+    description: '诊断严重程度'
+  report-path:
+    description: '报告文件路径'
+
+runs:
+  using: 'node20'
+  main: 'dist/action.js'
+
+branding:
+  icon: 'search'
+  color: 'blue'
